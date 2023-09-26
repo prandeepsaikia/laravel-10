@@ -33,15 +33,6 @@ cp ./env.example ./.env
 docker-compose up --build -d app nginx mysql
 
 #docker-compose exec app php artisan migrate
-
-# grab a shell inside docker/app
-docker-compose exec -u root app /bin/sh
-
-# then, inside shell
-npm install
-
-# vite
-npm run dev -- --host
 ```
 
 You can now access http://localhost:8022 (or whatever your FORWARD_NGINX_PORT is).
