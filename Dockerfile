@@ -27,13 +27,11 @@ RUN pecl channel-update pecl.php.net \
     && docker-php-ext-enable memcached \
     && docker-php-ext-enable imagick
 
-# I recommend being explicit with node version here...
-# but we'll see if livewire complains
-RUN apk add --update nodejs=18.14.2-r0 \
-    && apk add --update npm
+RUN rm /var/cache/apk/*
 
-RUN rm /var/cache/apk/* && \
-    mkdir -p /var/www
+WORKDIR /var/www
+# COPY . /var/www
+# RUN composer i
 
 COPY ./dev/docker-compose/php/supervisord-app.conf /etc/supervisord.conf
 
