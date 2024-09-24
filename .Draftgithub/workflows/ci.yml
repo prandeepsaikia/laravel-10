@@ -1,0 +1,118 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+     steps:
+      - uses: actions/checkout@v3
+ 
+      - name: Setup PHP
+        uses: psaikia/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, libxml2, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+ 
+      - name: Run composer install
+        run: composer install -n --prefer-dist
+ 
+      - name: Prepare Laravel Application
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+ 
+      - name: Run tests
+        run: php artisan test
+      - name: Validate test results
+        if: failure()
+        run: |
+          echo "Tests failed. Not allowing merge."
+          exit 1
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to AWS
+        uses: aws-actions/login@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Configure AWS region
+        run: |
+          export AWS_REGION=your-region
+
+      - name: Build Docker image
+        run: |
+          docker-compose build app
+
+      - name: Tag Docker image
+        run: |
+          docker tag ap-laravel:latest ${{ secrets.ECR_REGISTRY }}/${ECR_REPOSITORY}:latest
+
+      - name: Login to ECR
+        uses: aws-actions/login-ecr@v1
+        with:
+          registry: ${{ secrets.ECR_REGISTRY }}
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REGISTRY }}/${ECR_REPOSITORY}:latest               
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to AWS
+        uses: aws-actions/login@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Configure kubectl
+        uses: aws-actions/configure-kubectl@v1
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          cluster-name: ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Install Helm
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh
+
+      - name: Deploy to EKS using Helm
+        env:
+          HELM_RELEASE: my-php-app
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPOSITORY: my-php-app
+          IMAGE_TAG: latest
+        run: |
+          helm upgrade --install $HELM_RELEASE \
+            --set image.repository=$ECR_REGISTRY/$ECR_REPOSITORY \
+            --set image.tag=$IMAGE_TAG \
+            charts/my-php-app
+
+      - name: Verify deployment
+        run: |
+          kubectl get deployments
+          kubectl get pods        
